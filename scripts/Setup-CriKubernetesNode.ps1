@@ -2,27 +2,28 @@
 [CmdletBinding(PositionalBinding=$false)]
 Param
 (
-    [parameter(Mandatory = $true, HelpMessage='Kubernetes Config File')] [string]$ConfigFile,
+    [parameter(ParameterSetName='Default', Mandatory = $true, HelpMessage='Kubernetes Config File')] [string]$ConfigFile,
+    [parameter(ParameterSetName='Default', Mandatory = $true, HelpMessage='Kubernetes Master Node Ip')] $MasterIp,
+    [parameter(ParameterSetName='Default', Mandatory = $false)] $ClusterCIDR = "10.244.0.0/16",
+    [parameter(ParameterSetName='Default', Mandatory = $false)] [switch] $SkipInstall,
 
-    [parameter(Mandatory = $false)] [switch] $SkipInstall,
-    [parameter(Mandatory = $false)] $ClusterCIDR = "10.244.0.0/16",
-    [parameter(Mandatory = $false)] $KubeDnsServiceIP = "10.96.0.10",
-    [parameter(Mandatory = $false)] $ServiceCIDR = "10.96.0.0/12"
+    [parameter(ParameterSetName='OnlyInstall', Mandatory = $false)] [switch] $OnlyInstall
 )
 $ProgressPreference = 'SilentlyContinue'
 
 $kubernetesPath = "C:\k"
 $containerdPath = "$Env:ProgramFiles\containerd"
 
-mkdir -Force $kubernetesPath > $null; mkdir -Force (Join-Path $kubernetesPath cni\config) > $null
-mkdir -Force $containerdPath > $null
+New-Item -Path $kubernetesPath -ItemType Directory -Force > $null
+New-Item -Path (Join-Path $kubernetesPath cni\config) -Force > $null
+New-Item -Path $containerdPath -Force > $null
 
 Function CreateVMSwitch() {
     # make the switch with internet access a hyper-v switch, if it's not one already
     $interfaceIndex = (Get-WmiObject win32_networkadapterconfiguration | Where-Object {$null -ne $_.defaultipgateway}).InterfaceIndex
     $netAdapter = Get-NetAdapter -InterfaceIndex $interfaceIndex
     If(-not ($netAdapter.DriverDescription -Like "*Hyper-V*")) {
-        Write-Output "Creating VM Switch"
+        Write-Output "Creating VM switch"
         New-VMSwitch -SwitchName $netAdapter.Name -AllowManagementOS $true -NetAdapterName $netAdapter.Name *>&1
     }
 }
@@ -70,9 +71,7 @@ Function DownloadAllFiles() {
     TestAndDownloadFile https://storage.googleapis.com/kubernetes-release/release/v1.13.0/bin/windows/amd64/kube-proxy.exe $kubernetesPath kube-proxy.exe
 
     $cniDir = Join-Path $kubernetesPath cni
-    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/flannel/l2bridge/cni/flannel.exe $cniDir flannel.exe
-    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/flannel/l2bridge/cni/host-local.exe $cniDir host-local.exe
-    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/flannel/l2bridge/cni/win-bridge.exe $cniDir win-bridge.exe
+    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/windows/cni/wincni.exe $cniDir wincni.exe
 
     if(-not (Test-Path (Join-Path $containerdPath crictl.exe))) {
         Write-Output "Downloading crictl"
@@ -83,10 +82,10 @@ Function DownloadAllFiles() {
     TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/helper.psm1 $kubernetesPath helper.psm1
     TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/hns.psm1 $kubernetesPath hns.psm1
     TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/start-kubeproxy.ps1 $kubernetesPath start-kubeproxy.ps1
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/flannel/l2bridge/start.ps1 $kubernetesPath start.ps1
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/flannel/l2bridge/start-kubelet.ps1 $kubernetesPath start-kubelet.ps1
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/flannel/stop.ps1 $kubernetesPath stop.ps1
-    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/flannel/l2bridge/net-conf.json $kubernetesPath net-conf.json
+    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/start.ps1 $kubernetesPath start.ps1
+    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/start-kubelet.ps1 $kubernetesPath start-kubelet.ps1
+    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/windows/AddRoutes.ps1 $kubernetesPath AddRoutes.ps1
+    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/stop.ps1 $kubernetesPath stop.ps1
 
     TestAndDownloadFile https://github.com/SaswatB/windows-cri-kubernetes/raw/master/cri-configs/containerd-config.toml $containerdPath config.toml
 }
@@ -98,8 +97,25 @@ Function Assert-FileExists($file) {
     }
 }
 
+Function UpdateCrictlConfig() {
+    $crictlConfigDir = "$($env:USERPROFILE)\.crictl"
+    $crictlConfigPath = Join-Path $crictlConfigDir "crictl.yaml"
+
+    if(Test-Path $crictlConfigPath) {
+        return;
+    }
+
+    Write-Output "Updating crictl config"
+    New-Item -Path $crictlConfigDir -ItemType Directory -Force > $null
+@"
+runtime-endpoint: npipe:\\\\.\pipe\containerd-containerd
+image-endpoint: npipe:\\\\.\pipe\containerd-containerd
+timeout: 0
+debug: false
+"@ | Out-File $crictlConfigPath
+}
+
 Function UpdatePath() {
-    Write-Output "Updating Path"
     $path = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
     $updated = $false
     if(-not ($path -match $kubernetesPath.Replace("\","\\")+"(;|$)"))
@@ -114,10 +130,11 @@ Function UpdatePath() {
     }
     if($updated)
     {
+        Write-Output "Updating path"
         [Environment]::SetEnvironmentVariable("Path", $path, [EnvironmentVariableTarget]::Machine)
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
     }
     [Environment]::SetEnvironmentVariable("KUBECONFIG", "$kubernetesPath\config", [EnvironmentVariableTarget]::User)
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 }
 
 if(-not $SkipInstall) {
@@ -137,7 +154,12 @@ if(-not $SkipInstall) {
 
     CreateVMSwitch
     DownloadAllFiles
+    UpdateCriCtlConfig
     UpdatePath
+}
+
+if($OnlyInstall) {
+    Exit
 }
 
 Assert-FileExists (Join-Path $containerdPath containerd.exe)
@@ -146,15 +168,21 @@ Assert-FileExists (Join-Path $containerdPath ctr.exe)
 
 #copy the config file
 Copy-Item $ConfigFile $kubernetesPath\config
-mkdir -Force $home\.kube > $null
+New-Item -Path $home\.kube -Force > $null
 Copy-Item $kubernetesPath\config $home\.kube\
 
 #start containerd
-Write-Output "Starting ContainerD"
-start powershell "containerd --log-level debug"
+Write-Output "Starting containerd"
+Start-Process powershell "containerd --log-level debug"
+
+# wait for containerd to accept inputs, otherwise kubectl will close immediately
+Start-Sleep 1
+while(-not (get-childitem \\.\pipe\ | ?{ $_.name -eq "containerd-containerd" })) {
+    Write-Output "Waiting for containerd to start"
+    Start-Sleep 1
+}
 
 #start kubelet and associated processes
-pushd $kubernetesPath
-$address = ((Get-NetAdapter -InterfaceIndex (Get-WmiObject win32_networkadapterconfiguration | Where-Object {$_.defaultipgateway -ne $null}).InterfaceIndex -IncludeHidden) | ? {-not $_.Hidden} | Get-NetIPAddress -AddressFamily IPv4).IPAddress | Select -First 1
-.\start.ps1 -ManagementIP $address -ClusterCIDR $ClusterCIDR -KubeDnsServiceIP $KubeDnsServiceIP -ServiceCIDR $ServiceCIDR
-popd
+Push-Location $kubernetesPath
+.\start.ps1 -MasterIp $MasterIp -ClusterCIDR $ClusterCIDR
+Pop-Location
