@@ -14,9 +14,9 @@ $ProgressPreference = 'SilentlyContinue'
 $kubernetesPath = "C:\k"
 $containerdPath = "$Env:ProgramFiles\containerd"
 
-New-Item -Path $kubernetesPath -ItemType Directory -Force > $null
-New-Item -Path (Join-Path $kubernetesPath cni\config) -Force > $null
-New-Item -Path $containerdPath -Force > $null
+New-Item -ItemType Directory -Path $kubernetesPath -Force > $null
+New-Item -ItemType Directory -Path (Join-Path $kubernetesPath cni\config) -Force > $null
+New-Item -ItemType Directory -Path $containerdPath -Force > $null
 
 Function CreateVMSwitch() {
     # make the switch with internet access a hyper-v switch, if it's not one already
@@ -106,7 +106,7 @@ Function UpdateCrictlConfig() {
     }
 
     Write-Output "Updating crictl config"
-    New-Item -Path $crictlConfigDir -ItemType Directory -Force > $null
+    New-Item -ItemType Directory -Path $crictlConfigDir -Force > $null
 @"
 runtime-endpoint: npipe:\\\\.\pipe\containerd-containerd
 image-endpoint: npipe:\\\\.\pipe\containerd-containerd
@@ -168,7 +168,7 @@ Assert-FileExists (Join-Path $containerdPath ctr.exe)
 
 #copy the config file
 Copy-Item $ConfigFile $kubernetesPath\config
-New-Item -Path $home\.kube -Force > $null
+New-Item -ItemType Directory -Path $home\.kube -Force > $null
 Copy-Item $kubernetesPath\config $home\.kube\
 
 #start containerd
