@@ -27,8 +27,9 @@
 
 * Networking (networking.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "Networking"`
-  * 0/3 passed
+  * 1/3 passed
     * Setting DNS is not implemented yet
+    * Host port test is broken due to [current behavior in WinNAT](https://blogs.technet.microsoft.com/virtualization/2016/05/25/windows-nat-winnat-capabilities-and-limitations/)
 
 * PodSandbox (pod.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "PodSandbox"`
@@ -49,3 +50,4 @@
 * Streaming (streaming.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "Streaming"`
   * 3/5 passed
+    * portForward not yet supported on Windows
