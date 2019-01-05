@@ -19,7 +19,7 @@
 
 * Image Manager (image.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "Image Manager"`
-  * 6/6 passed
+  * 5/5 passed
 
 * Multiple Containers [Conformance] (multi_container_linux.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "Multiple Containers [Conformance]"`
