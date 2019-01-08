@@ -3,7 +3,7 @@
 Param
 (
     [parameter(ParameterSetName='Default', Mandatory = $true, HelpMessage='Kubernetes Config File')] [string]$ConfigFile,
-    [parameter(ParameterSetName='Default', Mandatory = $true, HelpMessage='Kubernetes Master Node Ip')] $MasterIp,
+    [parameter(ParameterSetName='Default', Mandatory = $false, HelpMessage='Kubernetes Master Node Ip')] [string]$MasterIp="",
     [parameter(ParameterSetName='Default', Mandatory = $false)] $ClusterCIDR = "10.244.0.0/16",
     [parameter(ParameterSetName='Default', Mandatory = $false)] [switch] $SkipInstall,
 
@@ -165,6 +165,16 @@ if($OnlyInstall) {
 Assert-FileExists (Join-Path $containerdPath containerd.exe)
 Assert-FileExists (Join-Path $containerdPath containerd-shim-runhcs-v1.exe)
 Assert-FileExists (Join-Path $containerdPath ctr.exe)
+
+#get the master ip
+if($MasterIp.Length -eq 0) {
+    $MasterIp = ([System.Uri](kubectl config view -o jsonpath='{.clusters[0].cluster.server}' --kubeconfig $ConfigFile)).Host
+    if(-not $? -or $MasterIp.Length -eq 0) {
+        Write-Error "Unable to get master ip from config"
+        Exit 1
+    }
+    Write-Output "Using master ip $MasterIp"
+}
 
 #copy the config file
 Copy-Item $ConfigFile $kubernetesPath\config

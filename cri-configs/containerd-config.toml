@@ -37,8 +37,32 @@ state = "C:\\containerd\\data\\state"
           runtime_type = "io.containerd.runhcs.v1"
           [plugins.cri.containerd.runtimes.runhcs-debug.options]
             Debug = true
-            DebugType = 0
-            RegistryRoot = ""
+        [plugins.cri.containerd.runtimes.wcow]
+          runtime_type = "io.containerd.runhcs.v1"
+          [plugins.cri.containerd.runtimes.wcow.options]
+            SandboxImage = "mcr.microsoft.com/windows/nanoserver:1809"
+            SandboxPlatform = "windows/amd64"
+            SandboxIsolation = 1
+        [plugins.cri.containerd.runtimes.wcow-debug]
+          runtime_type = "io.containerd.runhcs.v1"
+          [plugins.cri.containerd.runtimes.wcow-debug.options]
+            Debug = true
+            SandboxImage = "mcr.microsoft.com/windows/nanoserver:1809"
+            SandboxPlatform = "windows/amd64"
+            SandboxIsolation = 1
+        [plugins.cri.containerd.runtimes.lcow]
+          runtime_type = "io.containerd.runhcs.v1"
+          [plugins.cri.containerd.runtimes.lcow.options]
+            SandboxImage = "k8s.gcr.io/pause:3.1"
+            SandboxPlatform = "linux/amd64"
+            SandboxIsolation = 1
+        [plugins.cri.containerd.runtimes.lcow-debug]
+          runtime_type = "io.containerd.runhcs.v1"
+          [plugins.cri.containerd.runtimes.lcow-debug.options]
+            Debug = true
+            SandboxImage = "k8s.gcr.io/pause:3.1"
+            SandboxPlatform = "linux/amd64"
+            SandboxIsolation = 1
     [plugins.cri.cni]
       bin_dir = "C:\\k\\cni"
       conf_dir = "C:\\k\\cni\\config"
