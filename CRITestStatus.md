@@ -2,6 +2,8 @@
 
 `$cdep = "npipe:\\\\.\pipe\containerd-containerd"`
 
+Waiting on [this pr](https://github.com/jterry75/cri/pull/6) for volume support
+
 * AppArmor (apparmor.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "AppArmor"`
   * 0/0 passed
@@ -12,10 +14,9 @@
 
 * Container (container.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "Container"`
-  * 5/10 passed
+  * 7/10 passed
     * Currently there's a bug when stopping a running container
     * Killing processes by closing execSync currently throws an error
-    * Support for volumes is not currently implemented
 
 * Image Manager (image.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "Image Manager"`

@@ -6,6 +6,11 @@ Instructions to setup a Windows k8s node with CRI/ContainerD are available in Co
 
 ## Status
 
+### 1/14/19
+  * Implemented volume support in CRI for Windows
+  * Ported volume tests in CRITest
+  * Updated default containerd config to support runtimes
+
 ### 1/7/19
   * Added additional runtimes and windows test images to CRITest
 
