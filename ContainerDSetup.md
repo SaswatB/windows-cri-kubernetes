@@ -4,14 +4,16 @@
 
 ### ContainerD Binaries
 You will need to build the following binaries
-* containerd.exe
+* `containerd.exe`
   * https://github.com/jterry75/cri/tree/windows_port/cmd/containerd
-* ctr.exe
+* `ctr.exe`
   * https://github.com/containerd/cri/tree/master/cmd/ctr
-* containerd-shim-runhcs-v1.exe
+* `containerd-shim-runhcs-v1.exe`
   * https://github.com/containerd/containerd/tree/master/cmd/containerd-shim-runhcs-v1
+* `wincni.exe`
+  * https://github.com/SaswatB/windows-container-networking/tree/v2flowinv1
 
-Copy these binaries to `C:\Program Files\containerd` on every node you want to add.
+Copy `containerd.exe`, `ctr.exe`, and `containerd-shim-runhcs-v1.exe` to `C:\Program Files\containerd` and copy `wincni.exe` to `C:\k\cni` on every node you want to add.
 
 You can use the following command to build and place the binaries in the working directory.
 Copy `scripts/cribuild.sh` to the working directory before running it.

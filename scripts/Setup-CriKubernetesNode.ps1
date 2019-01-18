@@ -4,7 +4,7 @@ Param
 (
     [parameter(ParameterSetName='Default', Mandatory = $true, HelpMessage='Kubernetes Config File')] [string]$ConfigFile,
     [parameter(ParameterSetName='Default', Mandatory = $false, HelpMessage='Kubernetes Master Node Ip')] [string]$MasterIp="",
-    [parameter(ParameterSetName='Default', Mandatory = $false)] $ClusterCIDR = "10.244.0.0/16",
+    [parameter(ParameterSetName='Default', Mandatory = $false, HelpMessage='Kubernetes Pod Service CIDR')] $ClusterCIDR = "10.244.0.0/16",
     [parameter(ParameterSetName='Default', Mandatory = $false)] [switch] $SkipInstall,
 
     [parameter(ParameterSetName='OnlyInstall', Mandatory = $false)] [switch] $OnlyInstall
@@ -12,10 +12,11 @@ Param
 $ProgressPreference = 'SilentlyContinue'
 
 $kubernetesPath = "C:\k"
+$cniDir = Join-Path $kubernetesPath cni
 $containerdPath = "$Env:ProgramFiles\containerd"
 
 New-Item -ItemType Directory -Path $kubernetesPath -Force > $null
-New-Item -ItemType Directory -Path (Join-Path $kubernetesPath cni\config) -Force > $null
+New-Item -ItemType Directory -Path (Join-Path $cniDir config) -Force > $null
 New-Item -ItemType Directory -Path $containerdPath -Force > $null
 
 Function CreateVMSwitch() {
@@ -69,9 +70,6 @@ Function DownloadAllFiles() {
     TestAndDownloadFile https://storage.googleapis.com/kubernetes-release/release/v1.13.0/bin/windows/amd64/kubectl.exe $kubernetesPath kubectl.exe
     TestAndDownloadFile https://storage.googleapis.com/kubernetes-release/release/v1.13.0/bin/windows/amd64/kubelet.exe $kubernetesPath kubelet.exe
     TestAndDownloadFile https://storage.googleapis.com/kubernetes-release/release/v1.13.0/bin/windows/amd64/kube-proxy.exe $kubernetesPath kube-proxy.exe
-
-    $cniDir = Join-Path $kubernetesPath cni
-    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/windows/cni/wincni.exe $cniDir wincni.exe
 
     if(-not (Test-Path (Join-Path $containerdPath crictl.exe))) {
         Write-Output "Downloading crictl"
@@ -134,7 +132,8 @@ Function UpdatePath() {
         [Environment]::SetEnvironmentVariable("Path", $path, [EnvironmentVariableTarget]::Machine)
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
     }
-    [Environment]::SetEnvironmentVariable("KUBECONFIG", "$kubernetesPath\config", [EnvironmentVariableTarget]::User)
+    $env:KUBECONFIG = "$kubernetesPath\config"
+    [Environment]::SetEnvironmentVariable("KUBECONFIG", $env:KUBECONFIG, [EnvironmentVariableTarget]::User)
 }
 
 if(-not $SkipInstall) {
@@ -165,6 +164,7 @@ if($OnlyInstall) {
 Assert-FileExists (Join-Path $containerdPath containerd.exe)
 Assert-FileExists (Join-Path $containerdPath containerd-shim-runhcs-v1.exe)
 Assert-FileExists (Join-Path $containerdPath ctr.exe)
+Assert-FileExists (Join-Path $cniDir wincni.exe)
 
 #get the master ip
 if($MasterIp.Length -eq 0) {

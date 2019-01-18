@@ -1,5 +1,6 @@
-#cri/containerd
 export GOOS=windows
+
+#cri/containerd
 cd /go/src
 mkdir -p github.com/containerd
 cd github.com/containerd/
@@ -30,3 +31,18 @@ echo "Getting dependencies"
 go get
 echo "Building containerd-shim-runhcs-v1"
 go build -o /out/containerd-shim-runhcs-v1.exe .
+
+#wincni
+cd /go/src/github.com/
+mkdir -p Microsoft
+cd Microsoft/
+git clone https://github.com/SaswatB/windows-container-networking.git
+cd windows-container-networking/
+git checkout v2flowinv1
+cd cni/
+echo "Getting dependencies"
+go get
+cd ..
+echo "Building wincni"
+make
+mv out/wincni.exe /out/
