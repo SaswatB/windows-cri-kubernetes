@@ -75,7 +75,7 @@ Function DownloadAllFiles() {
         Write-Output "Downloading crictl"
         DownloadAndExtractTarGz https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.13.0/crictl-v1.13.0-windows-amd64.tar.gz $containerdPath
     }
-    TestAndDownloadFile https://github.com/Microsoft/hcsshim/releases/download/v0.8.3/runhcs.exe $containerdPath runhcs.exe
+    TestAndDownloadFile https://github.com/Microsoft/hcsshim/releases/download/v0.8.4/runhcs.exe $containerdPath runhcs.exe
 
     TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/helper.psm1 $kubernetesPath helper.psm1
     TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/hns.psm1 $kubernetesPath hns.psm1

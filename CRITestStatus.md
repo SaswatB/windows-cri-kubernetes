@@ -2,8 +2,6 @@
 
 `$cdep = "npipe:\\\\.\pipe\containerd-containerd"`
 
-Waiting on [this pr](https://github.com/jterry75/cri/pull/6) for volume support
-
 * AppArmor (apparmor.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "AppArmor"`
   * 0/0 passed
@@ -28,9 +26,8 @@ Waiting on [this pr](https://github.com/jterry75/cri/pull/6) for volume support
 
 * Networking (networking.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "Networking"`
-  * 1/3 passed
+  * 2/3 passed
     * Setting DNS is not implemented yet
-    * Host port test is broken due to [current behavior in WinNAT](https://blogs.technet.microsoft.com/virtualization/2016/05/25/windows-nat-winnat-capabilities-and-limitations/)
 
 * PodSandbox (pod.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "PodSandbox"`
@@ -51,4 +48,4 @@ Waiting on [this pr](https://github.com/jterry75/cri/pull/6) for volume support
 * Streaming (streaming.go)
   * `.\critest.exe -runtime-endpoint $cdep -"ginkgo.v" -"ginkgo.focus" "Streaming"`
   * 3/5 passed
-    * portForward not yet supported on Windows
+    * portForward through streaming is not yet supported on Windows

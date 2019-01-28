@@ -6,6 +6,10 @@ Instructions to setup a Windows k8s node with CRI/ContainerD are available in Co
 
 ## Status
 
+### 1/28/19
+  * Updated instructions for cni
+  * [Started upstreaming critest port](https://github.com/kubernetes-sigs/cri-tools/pull/430)
+
 ### 1/14/19
   * Implemented volume support in CRI for Windows
   * Ported volume tests in CRITest
