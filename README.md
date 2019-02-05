@@ -6,6 +6,10 @@ Instructions to setup a Windows k8s node with CRI/ContainerD are available in Co
 
 ## Status
 
+### 2/5/19
+  * Upstreamed critest port
+  * Added start of flannel configuration to setup script
+
 ### 1/28/19
   * Updated instructions for cni
   * [Started upstreaming critest port](https://github.com/kubernetes-sigs/cri-tools/pull/430)
