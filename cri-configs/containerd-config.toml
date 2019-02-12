@@ -33,19 +33,21 @@ state = "C:\\containerd\\data\\state"
       [plugins.cri.containerd.default_runtime]
         runtime_type = "io.containerd.runhcs.v1"
       [plugins.cri.conatinerd.runtimes]
-        [plugins.cri.containerd.runtimes.runhcs-debug]
-          runtime_type = "io.containerd.runhcs.v1"
-          [plugins.cri.containerd.runtimes.runhcs-debug.options]
-            Debug = true
         [plugins.cri.containerd.runtimes.wcow]
           runtime_type = "io.containerd.runhcs.v1"
-          [plugins.cri.containerd.runtimes.wcow.options]
-            SandboxImage = "mcr.microsoft.com/windows/nanoserver:1809"
-            SandboxPlatform = "windows/amd64"
-            SandboxIsolation = 1
         [plugins.cri.containerd.runtimes.wcow-debug]
           runtime_type = "io.containerd.runhcs.v1"
           [plugins.cri.containerd.runtimes.wcow-debug.options]
+            Debug = true
+        [plugins.cri.containerd.runtimes.wcow-isolated]
+          runtime_type = "io.containerd.runhcs.v1"
+          [plugins.cri.containerd.runtimes.wcow-isolated.options]
+            SandboxImage = "mcr.microsoft.com/windows/nanoserver:1809"
+            SandboxPlatform = "windows/amd64"
+            SandboxIsolation = 1
+        [plugins.cri.containerd.runtimes.wcow-isolated-debug]
+          runtime_type = "io.containerd.runhcs.v1"
+          [plugins.cri.containerd.runtimes.wcow-isolated-debug.options]
             Debug = true
             SandboxImage = "mcr.microsoft.com/windows/nanoserver:1809"
             SandboxPlatform = "windows/amd64"

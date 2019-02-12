@@ -6,6 +6,9 @@ Instructions to setup a Windows k8s node with CRI/ContainerD are available in Co
 
 ## Status
 
+### 2/12/19
+  * Updated containerd configuration to use better runtime names
+
 ### 2/5/19
   * Upstreamed critest port
   * Added start of flannel configuration to setup script
