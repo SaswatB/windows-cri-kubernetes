@@ -226,7 +226,7 @@ if($ServiceCIDR.Length -eq 0) {
         Write-Error "Unable to get service cidr from config, please set -ServiceCIDR manually"
         Exit 1
     }
-    $ServiceCIDR = $scFlag.SubString($scFlag.IndexOf("=")+1, $scFlag.IndexOf("/") - $scFlag.IndexOf("=") - 1)
+    $ServiceCIDR = $scFlag.SubString($scFlag.IndexOf("=")+1)
     Write-Output "Using service cidr $ServiceCIDR"
 }
 
