@@ -8,24 +8,35 @@ Param
     [parameter(ParameterSetName='Default', Mandatory = $false, HelpMessage='Kubernetes DNS Ip')] [string]$KubeDnsServiceIP,
     [parameter(ParameterSetName='Default', Mandatory = $false, HelpMessage='Skip downloading binaries')] [switch] $SkipInstall,
 
-    [parameter(ParameterSetName='OnlyInstall', Mandatory = $false)] [switch] $OnlyInstall
+    [parameter(ParameterSetName='OnlyInstall', Mandatory = $false)] [switch] $OnlyInstall,
+
+    [parameter(ParameterSetName='StopNode', Mandatory = $false)] [switch] $StopNode
 )
 $ProgressPreference = 'SilentlyContinue'
 
 $kubernetesPath = "C:\k"
 $cniDir = Join-Path $kubernetesPath cni
+$cniConfigDir = Join-Path $cniDir config
 $containerdPath = "$Env:ProgramFiles\containerd"
 $flanneldPath = "C:\flannel"
 $flanneldConfPath = "C:\etc\kube-flannel"
 $lcowPath = "$Env:ProgramFiles\Linux Containers"
 
+$networkMode = "L2Bridge"
+$networkName = "cbr0"
+$kubeDnsSuffix="svc.cluster.local"
+$kubeletConfigPath = Join-Path $kubernetesPath "kubelet-config.yaml"
+$cniConfig = Join-Path $cniConfigDir "cni.conf"
+
 # create all the necessary directories if they don't already exist
 New-Item -ItemType Directory -Path $kubernetesPath -Force > $null
-New-Item -ItemType Directory -Path (Join-Path $cniDir config) -Force > $null
+New-Item -ItemType Directory -Path $cniConfigDir -Force > $null
 New-Item -ItemType Directory -Path $containerdPath -Force > $null
 New-Item -ItemType Directory -Path $flanneldPath -Force > $null
 New-Item -ItemType Directory -Path $flanneldConfPath -Force > $null
 New-Item -ItemType Directory -Path $lcowPath -Force > $null
+
+# Setup functions
 
 Function CreateVMSwitch() {
     # make the switch with internet access a hyper-v switch, if it's not one already
@@ -71,6 +82,7 @@ Function DownloadAndExtractZip($url, $dstPath) {
     Expand-Archive $tmpZip.FullName $dstPath
     Remove-Item $tmpZip.FullName
 }
+
 Function TestAndDownloadFile($url, $destPath, $name) {
     $dest = Join-Path $destPath $name
     if(-not (Test-Path $dest)) {
@@ -94,15 +106,9 @@ Function DownloadAllFiles() {
     TestAndDownloadFile https://github.com/Microsoft/hcsshim/releases/download/v0.8.4/runhcs.exe $containerdPath runhcs.exe
 
     # download SDN scripts and configs
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/hns.psm1 $kubernetesPath hns.psm1
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/helper.psm1 $kubernetesPath helper.psm1
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/windows/start-kubeproxy.ps1 $kubernetesPath start-kubeproxy.ps1
-    
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/flannel/l2bridge/start.ps1 $kubernetesPath start.ps1
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/flannel/l2bridge/start-kubelet.ps1 $kubernetesPath start-kubelet.ps1
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/flannel/stop.ps1 $kubernetesPath stop.ps1
+    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/windows/hns.psm1 $kubernetesPath hns.psm1
 
-    TestAndDownloadFile https://github.com/SaswatB/SDN/raw/master/Kubernetes/flannel/l2bridge/net-conf.json $kubernetesPath net-conf.json
+    TestAndDownloadFile https://github.com/Microsoft/SDN/raw/master/Kubernetes/flannel/l2bridge/net-conf.json $kubernetesPath net-conf.json
     Copy-Item (Join-Path $kubernetesPath net-conf.json) $flanneldConfPath
 
     # download flannel
@@ -128,7 +134,7 @@ Function Assert-FileExists($file) {
 
 Function UpdateCrictlConfig() {
     # set crictl to access the configured container endpoint by default
-    $crictlConfigDir = "$($env:USERPROFILE)\.crictl"
+    $crictlConfigDir = Join-Path  $env:USERPROFILE ".crictl"
     $crictlConfigPath = Join-Path $crictlConfigDir "crictl.yaml"
 
     if(Test-Path $crictlConfigPath) {
@@ -145,7 +151,7 @@ debug: false
 "@ | Out-File $crictlConfigPath
 }
 
-Function UpdatePath() {
+Function UpdateEnv() {
     # update the path variable if it doesn't have the needed paths
     $path = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine)
     $updated = $false
@@ -169,6 +175,182 @@ Function UpdatePath() {
     # update the kubeconfig env variable
     $env:KUBECONFIG = "$kubernetesPath\config"
     [Environment]::SetEnvironmentVariable("KUBECONFIG", $env:KUBECONFIG, [EnvironmentVariableTarget]::User)
+
+    # update the NODE_NAME env variable, needed for flanneld
+    $env:NODE_NAME = (hostname).ToLower()
+    [Environment]::SetEnvironmentVariable("NODE_NAME", $env:NODE_NAME, [EnvironmentVariableTarget]::User)
+
+    # update the KUBE_NETWORK env variable, needed for kubeproxy
+    $env:KUBE_NETWORK=$networkName.ToLower()
+    [Environment]::SetEnvironmentVariable("KUBE_NETWORK", $env:KUBE_NETWORK, [EnvironmentVariableTarget]::User)
+}
+
+Function CreateKubeletConfig() {
+    if(Test-Path $kubeletConfigPath) {
+        return;
+    }
+
+    Write-Output "Updating kubelet config"
+@"
+kind: KubeletConfiguration
+apiVersion: kubelet.config.k8s.io/v1beta1
+featureGates:
+    RuntimeClass: true
+runtimeRequestTimeout: 20m
+resolverConfig: ""
+enableDebuggingHandlers: true
+clusterDomain: "cluster.local"
+hairpinMode: "promiscuous-bridge"
+cgroupsPerQOS: false
+enforceNodeAllocatable: []
+"@ | Out-File $kubeletConfigPath
+}
+
+Function RegisterContainerDService() {
+    Write-Host "Registering containerd as a service"
+    $cdbinary = Join-Path $containerdPath containerd.exe
+    $svc = Get-Service -Name containerd -ErrorAction SilentlyContinue
+    if ($null -ne $svc) {
+        & $cdbinary --unregister-service
+    }
+    & $cdbinary --register-service
+    $svc = Get-Service -Name "containerd" -ErrorAction SilentlyContinue
+    if ($null -eq $svc) {
+        throw "containerd.exe did not installed as a service correctly."
+    }
+}
+
+Function IsContainerDUp() {
+    return get-childitem \\.\pipe\ | ?{ $_.name -eq "containerd-containerd" }
+}
+
+# Deployment functions
+
+Function CleanupOldNetwork() {
+    $hnsNetwork = Get-HnsNetwork | Where-Object Name -EQ $networkName.ToLower()
+    if ($hnsNetwork) {
+        Write-Host "Cleaning up old HNS network found"
+        Write-Host ($hnsNetwork | ConvertTo-Json -Depth 10) 
+        Remove-HnsNetwork $hnsNetwork
+    }
+}
+
+Function IsNodeRegistered() {
+    & (Join-Path $kubernetesPath kubectl.exe) --kubeconfig=$env:KUBECONFIG get nodes/$($(hostname).ToLower())
+    return (!$LASTEXITCODE)
+}
+
+Function RegisterNode() {
+    if (IsNodeRegistered) {
+        return
+    }
+
+    $argList = @("--hostname-override=$(hostname)","--resolv-conf=""""", "--cgroups-per-qos=false", "--enforce-node-allocatable=""""","--kubeconfig="+$env:KUBECONFIG,"--container-runtime=remote", "--container-runtime-endpoint=npipe:////./pipe/containerd-containerd")
+    $process = Start-Process -FilePath (Join-Path $kubernetesPath kubelet.exe) -PassThru -ArgumentList $argList
+
+    # wait till the node is registered
+    while (!(IsNodeRegistered)) {
+        Write-Host "waiting to discover node registration status"
+        Start-Sleep -sec 1
+    }
+
+    $process | Stop-Process | Out-Null
+}
+
+
+function ConvertTo-DecimalIP([Net.IPAddress] $IPAddress) {
+  $i = 3; $DecimalIP = 0;
+  $IPAddress.GetAddressBytes() | ForEach-Object { $DecimalIP += $_ * [Math]::Pow(256, $i); $i-- }
+  return [UInt32]$DecimalIP
+}
+
+Function ConvertTo-DottedDecimalIP([Uint32] $IPAddress) {
+    $DottedIP = $(for ($i = 3; $i -gt -1; $i--) {
+      $Remainder = $IPAddress % [Math]::Pow(256, $i)
+      ($IPAddress - $Remainder) / [Math]::Pow(256, $i)
+      $IPAddress = $Remainder
+    })
+    return [String]::Join(".", $DottedIP)
+}
+
+Function ConvertTo-MaskLength([Net.IPAddress] $SubnetMask) {
+    $Bits = $SubnetMask.GetAddressBytes() | ForEach-Object { [Convert]::ToString($_, 2) }
+    return ("$Bits" -replace "[\s0]").Length
+}
+
+Function Get-MgmtSubnet() {
+    $na = Get-NetAdapter -InterfaceIndex (Get-WmiObject win32_networkadapterconfiguration | Where-Object {$_.defaultipgateway -ne $null}).InterfaceIndex
+    if (!$na) {
+      throw "Failed to find a suitable network adapter, check your network settings."
+    }
+    $addr = (Get-NetIPAddress -InterfaceAlias $na.ifAlias -AddressFamily IPv4).IPAddress
+    $mask = (Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object InterfaceIndex -eq $($na.ifIndex)).IPSubnet[0]
+    $mgmtSubnet = (ConvertTo-DecimalIP $addr) -band (ConvertTo-DecimalIP $mask)
+    $mgmtSubnet = ConvertTo-DottedDecimalIP $mgmtSubnet
+    return "$mgmtSubnet/$(ConvertTo-MaskLength $mask)"
+}
+
+Function Get-MgmtIpAddress() {
+    return (Get-HnsNetwork | Where-Object Name -EQ $networkName.ToLower()).ManagementIP
+}
+
+Function Update-CNIConfig() {
+    $jsonSampleConfig = @"
+{
+  "cniVersion": "0.2.0",
+  "name": "<NetworkMode>",
+  "type": "flannel",
+  "delegate": {
+    "ApiVersion": 2,
+    "type": "<BridgeCNI>",
+      "dns" : {
+        "Nameservers" : [ "10.96.0.10" ],
+        "Search": [ "svc.cluster.local" ]
+      },
+      "HcnPolicyArgs" : [
+        {
+          "Type" : "OutBoundNAT", "Settings" : { "Exceptions": [ "<ClusterCIDR>", "<ServerCIDR>", "<MgmtSubnet>" ] }
+        },
+        {
+          "Type" : "SDNRoute", "Settings" : { "DestinationPrefix": "<ServerCIDR>", "NeedEncap" : true }
+        },
+        {
+          "Type" : "SDNRoute", "Settings" : { "DestinationPrefix": "<MgmtIP>/32", "NeedEncap" : true }
+        }
+      ]
+    }
+}
+"@
+    $configJson =  ConvertFrom-Json $jsonSampleConfig
+    $configJson.name = $networkName
+    $configJson.delegate.type = "win-bridge"
+    $configJson.delegate.dns.Nameservers[0] = $KubeDnsServiceIP
+    $configJson.delegate.dns.Search[0] = $kubeDnsSuffix
+
+    $configJson.delegate.HcnPolicyArgs[0].Settings.Exceptions[0] = $clusterCIDR
+    $configJson.delegate.HcnPolicyArgs[0].Settings.Exceptions[1] = $serviceCIDR
+    $configJson.delegate.HcnPolicyArgs[0].Settings.Exceptions[2] = Get-MgmtSubnet
+
+    $configJson.delegate.HcnPolicyArgs[1].Settings.DestinationPrefix  = $serviceCIDR
+    $configJson.delegate.HcnPolicyArgs[2].Settings.DestinationPrefix  = "$(Get-MgmtIpAddress)/32"
+
+    if (Test-Path $cniConfig) {
+        Clear-Content -Path $cniConfig
+    }
+
+    Write-Host "Generated CNI Config [$configJson]"
+    Add-Content -Path $cniConfig -Value (ConvertTo-Json $configJson -Depth 20)
+}
+
+Function StopKubeProcesses() {
+    get-process kubelet | stop-process
+    get-process kube-proxy | stop-process
+    get-process flanneld | stop-process
+}
+
+if($StopNode) {
+    StopKubeProcesses
+    Exit
 }
 
 if(-not $SkipInstall) {
@@ -189,7 +371,9 @@ if(-not $SkipInstall) {
     CreateVMSwitch
     DownloadAllFiles
     UpdateCriCtlConfig
-    UpdatePath
+    UpdateEnv
+    RegisterContainerDService
+    CreateKubeletConfig
 }
 
 if($OnlyInstall) {
@@ -204,9 +388,11 @@ Assert-FileExists (Join-Path $cniDir flannel.exe)
 Assert-FileExists (Join-Path $cniDir win-bridge.exe)
 
 # copy the config file
-Copy-Item $ConfigFile $kubernetesPath\config
+Copy-Item $ConfigFile $env:KUBECONFIG
 New-Item -ItemType Directory -Path $home\.kube -Force > $null
-Copy-Item $kubernetesPath\config $home\.kube\
+Copy-Item $env:KUBECONFIG $home\.kube\
+
+Write-Output "Getting cluster properties"
 
 # get the cluster cidr
 if($ClusterCIDR.Length -eq 0) {
@@ -251,18 +437,57 @@ if($ManagementIP.Length -eq 0) {
     Write-Output "Using management ip $ManagementIP"
 }
 
-# start containerd
-Write-Output "Starting containerd"
-Start-Process powershell "containerd --log-level debug"
+#start containerd
+if(-not (IsContainerDUp)) {
+    Write-Output "Starting containerd"
+    Start-Service -Name "containerd"
+    if(-not $?) {
+        Write-Error "Unable to start containerd"
+        Exit 1
+    }
+}
 
 # wait for containerd to accept inputs, otherwise kubectl will close immediately
 Start-Sleep 1
-while(-not (get-childitem \\.\pipe\ | ?{ $_.name -eq "containerd-containerd" })) {
+while(-not (IsContainerDUp)) {
     Write-Output "Waiting for containerd to start"
     Start-Sleep 1
 }
 
-# start kubelet and associated processes
-Push-Location $kubernetesPath
-.\start.ps1 -ClusterCIDR $ClusterCIDR -ManagementIP $ManagementIP -KubeDnsServiceIP $KubeDnsServiceIP -ServiceCIDR $ServiceCIDR
-Pop-Location
+# prepare network & start infra services
+Write-Output "Clearing old network and registering node"
+CleanupOldNetwork $networkName
+RegisterNode
+Import-Module (Join-Path $kubernetesPath hns.psm1) -DisableNameChecking
+
+# Create a L2Bridge to trigger a vSwitch creation. Do this only once as it causes network blip
+Write-Output "Creating network"
+if(!(Get-HnsNetwork | Where-Object Name -EQ "External")) {
+    New-HNSNetwork -Type $networkMode -AddressPrefix "192.168.255.0/30" -Gateway "192.168.255.1" -Name "External" -Verbose
+}
+Start-Sleep 5
+
+# Stop any running processes
+StopKubeProcesses
+
+# Start FlannelD, which would recreate the network. Expect disruption in node connectivity for few seconds
+Write-Output "Starting flanneld"
+Start-Process (Join-Path $flanneldPath flanneld.exe) -ArgumentList "--kubeconfig-file=$($env:KUBECONFIG) --iface=$ManagementIP --ip-masq=1 --kube-subnet-mgr=1" -NoNewWindow
+
+# Wait till the network is available
+while( !(Get-HnsNetwork -Verbose | Where-Object Name -EQ $networkName.ToLower()) ) {
+    Write-Host "Waiting for the Network to be created"
+    Start-Sleep 1
+}
+
+# Start kubelet
+Write-Output "Starting kubelet"
+Update-CNIConfig
+
+Start-Process powershell -ArgumentList "-c","$(Join-Path $kubernetesPath kubelet.exe) --config=$kubeletConfigPath --kubeconfig=$env:KUBECONFIG --hostname-override=$(hostname) --cluster-dns=$KubeDnsServiceIp --v=6 --log-dir=$kubernetesPath --logtostderr=false --network-plugin=cni --cni-bin-dir=$cniDir --cni-conf-dir $cniConfigDir --container-runtime=remote --container-runtime-endpoint='npipe:////./pipe/containerd-containerd'"
+Start-Sleep 10
+
+# Start kube-proxy
+Write-Output "Starting kubeproxy"
+Get-HnsPolicyList | Remove-HnsPolicyList
+Start-Process powershell -ArgumentList "-c","$(Join-Path $kubernetesPath kube-proxy.exe) --kubeconfig=$env:KUBECONFIG --hostname-override=$(hostname) --proxy-mode=kernelspace --v=4"

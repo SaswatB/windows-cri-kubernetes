@@ -36,6 +36,9 @@ Enable-WindowsOptionalFeature -Online -FeatureName "Containers" -All
 Enable-WindowsOptionalFeature -Online -FeatureName "Microsoft-Hyper-V" -All
 ```
 
+### Flannel
+Flannel should be set up on the cluster with `host-gw` as the backend.
+
 ## Setup and Running
 Use `Setup-CriKubernetesNode.ps1` from `scripts/` to setup and run the kubelet and containerd on the local node. This script will download most dependencies and config files.
 
@@ -47,3 +50,4 @@ Use `Setup-CriKubernetesNode.ps1` from `scripts/` to setup and run the kubelet a
 # Skip setup and only run containerd and kubelet
 .\Setup-CriKubernetesNode.ps1 -ConfigFile my-config.conf -SkipInstall
 ```
+Please note that this requires nodes to have L2 connectivity.
