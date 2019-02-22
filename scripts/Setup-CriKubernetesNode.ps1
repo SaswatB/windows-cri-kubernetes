@@ -245,7 +245,7 @@ Function RegisterNode() {
         return
     }
 
-    $argList = @("--hostname-override=$(hostname)","--resolv-conf=""""", "--cgroups-per-qos=false", "--enforce-node-allocatable=""""","--kubeconfig="+$env:KUBECONFIG,"--container-runtime=remote", "--container-runtime-endpoint=npipe:////./pipe/containerd-containerd")
+    $argList = @("--hostname-override=$(hostname)","--resolv-conf=""""", "--cgroups-per-qos=false", "--enforce-node-allocatable=""""","--kubeconfig=$($env:KUBECONFIG)","--container-runtime=remote", "--container-runtime-endpoint=npipe:////./pipe/containerd-containerd")
     $process = Start-Process -FilePath (Join-Path $kubernetesPath kubelet.exe) -PassThru -ArgumentList $argList
 
     # wait till the node is registered
